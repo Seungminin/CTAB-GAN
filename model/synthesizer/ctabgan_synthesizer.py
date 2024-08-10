@@ -454,6 +454,8 @@ def determine_layers_gen(side, random_dim, num_channels):
     1) layers_G -> layers of the generator network
 
     """
+    if side is None:
+        raise ValueError("side value cannot be None")
     
     # computing the dimensionality of hidden layers
     layer_dims = [(1, side), (num_channels, side // 2)]
@@ -563,11 +565,11 @@ class CTABGANSynthesizer:
     """ 
     
     def __init__(self,
-                 class_dim=(256, 256, 256, 256),
+                 class_dim=(64, 64, 64, 64),
                  random_dim=100,
-                 num_channels=64,
+                 num_channels=4,
                  l2scale=1e-5,
-                 batch_size=500,
+                 batch_size=4,
                  epochs=1):
                  
         self.random_dim = random_dim
@@ -578,11 +580,12 @@ class CTABGANSynthesizer:
         self.l2scale = l2scale
         self.batch_size = batch_size
         self.epochs = epochs
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.generator = None
-
-    def fit(self, train_data=pd.DataFrame, categorical=[], mixed={}, type={}):
+        self.transformer = None  # Ensure transformer is initialized here\
         
+    def fit(self, train_data=pd.DataFrame, categorical=[], mixed={}, type={}):
+    
         # obtaining the column index of the target column used for ML tasks
         problem_type = None
         target_index = None
@@ -606,24 +609,27 @@ class CTABGANSynthesizer:
         self.cond_generator = Condvec(train_data, self.transformer.output_info)
 
         # obtaining the desired height/width for converting tabular data records to square images for feeding it to discriminator network 		
-        sides = [4, 8, 16, 24, 32]
+        sides = [64,128,256,512]
         # the discriminator takes the transformed training data concatenated by the corresponding conditional vectors as input
         col_size_d = data_dim + self.cond_generator.n_opt
         for i in sides:
             if i * i >= col_size_d:
                 self.dside = i
                 break
+        else:
+            raise ValueError(f"Data dimension too high for given sides: {col_size_d}")
         
         # obtaining the desired height/width for generating square images from the generator network that can be converted back to tabular domain 		
-        sides = [4, 8, 16, 24, 32]
         col_size_g = data_dim
         for i in sides:
             if i * i >= col_size_g:
                 self.gside = i
                 break
-		
+        else:
+            raise ValueError(f"Data dimension too high for given sides: {col_size_g}")
+        
         # constructing the generator and discriminator networks
-        layers_G = determine_layers_gen(self.gside, self.random_dim+self.cond_generator.n_opt, self.num_channels)
+        layers_G = determine_layers_gen(self.gside, self.random_dim + self.cond_generator.n_opt, self.num_channels)
         layers_D = determine_layers_disc(self.dside, self.num_channels)
         self.generator = Generator(layers_G).to(self.device)
         discriminator = Discriminator(layers_D).to(self.device)
@@ -633,7 +639,7 @@ class CTABGANSynthesizer:
         optimizerG = Adam(self.generator.parameters(), **optimizer_params)
         optimizerD = Adam(discriminator.parameters(), **optimizer_params)
 
-       
+    
         st_ed = None
         classifier=None
         optimizerC= None
@@ -654,6 +660,7 @@ class CTABGANSynthesizer:
         
         # initiating the training by computing the number of iterations per epoch
         steps_per_epoch = max(1, len(train_data) // self.batch_size)
+
         for i in tqdm(range(self.epochs)):
             for _ in range(steps_per_epoch):
                 
@@ -787,7 +794,7 @@ class CTABGANSynthesizer:
                     optimizerG.step()
                     
                             
-    def sample(self, n):
+    def sample(self, num_samples):
         
         # turning the generator into inference mode to effectively use running statistics in batch norm layers
         self.generator.eval()
@@ -795,7 +802,7 @@ class CTABGANSynthesizer:
         output_info = self.transformer.output_info
         
         # generating synthetic data in batches accordingly to the total no. required
-        steps = n // self.batch_size + 1
+        steps = num_samples // self.batch_size + 1
         data = []
         for _ in range(steps):
             # generating synthetic data using sampled noise and conditional vectors
@@ -815,5 +822,5 @@ class CTABGANSynthesizer:
         # applying the inverse transform and returning synthetic data in a similar form as the original pre-processed training data
         result = self.transformer.inverse_transform(data)
         
-        return result[0:n]
+        return result[0:num_samples]
 
