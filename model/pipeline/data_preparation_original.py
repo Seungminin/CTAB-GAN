@@ -34,21 +34,21 @@ class DataPrep(object):
         self.column_types["categorical"] = []
         self.column_types["mixed"] = {}
         self.lower_bounds = {}
-        self.label_encoder_list = []
         self.ordinal_encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
         self.label_encoder = LabelEncoder()
         self.imputer = SimpleImputer(strategy='mean')
 
+        # 타겟 열 이름 가져오기
+        self.target_col = list(type.values())[0]
+        self.target_categories = raw_df[self.target_col].unique()
         # Spliting the input data to obtain training dataset
-        target_col = list(type.values())[0]
-        y_real = raw_df[target_col]
-        X_real = raw_df.drop(columns=[target_col])
-        X_train_real, _, y_train_real, _ = model_selection.train_test_split(X_real ,y_real, test_size=test_ratio, stratify=y_real, random_state=42)        
-        X_train_real[target_col] = y_train_real
-
-        # Replacing empty strings with na if any and replace na with empty
+        y_real = raw_df[self.target_col]
+        X_real = raw_df.drop(columns=[self.target_col])
+        X_train_real, _, y_train_real, _ = model_selection.train_test_split(X_real, y_real, test_size=test_ratio, stratify=y_real, random_state=42)        
         self.df = X_train_real
         self.df[self.target_col] = y_train_real
+
+        # Replacing empty strings with na if any and replace na with empty
         self.df = self.df.replace(r' ', np.nan)
         self.df = self.df.fillna('empty')
         
@@ -57,7 +57,7 @@ class DataPrep(object):
         categorical_columns = self.categorical_columns
         irrelevant_missing_columns = set(categorical_columns)
         relevant_missing_columns = list(all_columns - irrelevant_missing_columns)
-        
+        #
         for i in relevant_missing_columns:
             if i in list(self.mixed_columns.keys()):
                 if "empty" in list(self.df[i].values):
@@ -81,49 +81,33 @@ class DataPrep(object):
                 else:
                     self.df[log_column] = self.df[log_column].apply(lambda x: np.log(x - lower + eps) if x != -9999999 else -9999999)
         
+        # 모든 열에 OrdinalEncoding 적용
         self.df = pd.DataFrame(self.ordinal_encoder.fit_transform(self.df), columns=self.df.columns)
-        self.df[self.target_col] = self.label_encoder.fit_transform(self.df[self.target_col])
-        # Encoding categorical columns using OrdinalEncoder for multiple columns
-        self.df[categorical_columns] = self.ordinal_encoder.fit_transform(self.df[categorical_columns])
 
-        # Imputing missing values for numerical columns
-        self.df = pd.DataFrame(self.imputer.fit_transform(self.df), columns=self.df.columns)
-        
+        # 타겟 열에 LabelEncoding 적용
+        #self.df[self.target_col] = self.label_encoder.fit_transform(self.df[self.target_col])
+
         # Storing feature order
         self.feature_order = self.df.columns.tolist()
-
-        # Initialize LabelEncoder for target column
-        self.label_encoder = LabelEncoder()
-        self.df[target_col] = self.label_encoder.fit_transform(self.df[target_col])
         
         super().__init__()
     
     def inverse_prep(self, data, eps=1):
-        
         # Converting generated data into a dataframe and assign column names as per original dataset
         df_sample = pd.DataFrame(data, columns=self.df.columns)
-        #target_col = 'Fraud_Type'
 
-        # Reversing the label encoding assigned to categorical columns according to the original dataset 
-        for i in range(len(self.label_encoder_list)):
-            le = self.label_encoder_list[i]["label_encoder"]
-            df_sample[self.label_encoder_list[i]["column"]] = df_sample[self.label_encoder_list[i]["column"]].astype(int)
-            df_sample[self.label_encoder_list[i]["column"]] = le.inverse_transform(df_sample[self.label_encoder_list[i]["column"]])
+        target_col = 'Fraud_Type'
 
-        """# Reversing the label encoding assigned to target column (LabelEncoder)
-        if target_col in df_sample.columns:
-            # Round the values before inverse transformation
-            df_sample[target_col] = np.round(df_sample[target_col])
-            # Ensure the column is of integer type before inverse transformation
-            df_sample[target_col] = df_sample[target_col].astype(int)
-            #df_sample[target_col] = self.label_encoder.inverse_transform(df_sample[target_col])
-
-        # Reversing the ordinal encoding for categorical columns
-        categorical_columns = self.categorical_columns
-        if categorical_columns:
-            for column in categorical_columns:
-                if column in df_sample.columns:
-                    df_sample[column] = self.ordinal_encoder.inverse_transform(df_sample[[column]].values)"""
+        # Reversing the label encoding assigned to target column (LabelEncoder)
+        """if target_col in df_sample.columns:
+            df_sample[target_col] = np.round(df_sample[target_col]).astype(int)
+            df_sample[target_col] = df_sample[target_col].map(lambda x: 0 if x < 0 else x)
+            
+            # Ensure that all values are within the valid range of the label encoder
+            max_label_index = len(self.label_encoder.classes_) - 2
+            df_sample[target_col] = df_sample[target_col].map(lambda x: max_label_index if x > max_label_index else x)
+            
+            df_sample[target_col] = self.label_encoder.inverse_transform(df_sample[target_col])"""
         
         # Reversing log transformation by applying exponential transformation with appropriate scaling for non-positive numeric columns
         if self.log_columns:
@@ -148,4 +132,10 @@ class DataPrep(object):
         df_sample.replace(-9999999, np.nan, inplace=True)
         df_sample.replace('empty', np.nan, inplace=True)
 
+        # Reversing the ordinal encoding for categorical columns, excluding the target column
+        #categorical_columns = [col for col in self.categorical_columns if col != target_col]
+        df_sample = pd.DataFrame(self.ordinal_encoder.inverse_transform(df_sample), columns=self.df.columns)
+
         return df_sample
+    
+    #모두 Original인 코드.

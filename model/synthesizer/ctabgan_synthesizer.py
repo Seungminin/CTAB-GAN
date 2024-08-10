@@ -129,7 +129,7 @@ class Condvec(object):
             
         return vec, mask, idx, opt1prime
 
-    def sample(self, batch):
+    def sample(self, batch, fraud_type=None):
         
         """
         Used to create the conditional vectors for feeding it to the generator after training is finished
@@ -150,17 +150,45 @@ class Condvec(object):
         # (i.e., including modes of continuous and mixed columns)
         vec = np.zeros((batch, self.n_opt), dtype='float32')
         
-        # choosing one specific one-hot-encoding from all possible one-hot-encoded representations 
-        idx = np.random.choice(np.arange(self.n_col), batch)
-
-        # producing a list of selected categories within each of selected one-hot-encoding representation
-        opt1prime = random_choice_prob_index_sampling(self.p_sampling,idx)
-        
-        # assigning the appropriately chosen category for each corresponding conditional vector
-        for i in np.arange(batch):   
-            vec[i, self.interval[idx[i], 0] + opt1prime[i]] = 1
+        if fraud_type is not None:
+            # 만약 fraud_type이 주어졌다면, 해당 fraud_type에 대한 index를 찾는다
+            fraud_type_idx = self.get_fraud_type_index(fraud_type)
             
+            # 특정 fraud_type에 해당하는 열만 선택
+            idx = np.full(batch, fraud_type_idx)    
+        else:
+            # 그렇지 않으면 기존 방식으로 랜덤하게 선택
+            idx = np.random.choice(np.arange(self.n_col), batch)
+
+        opt1prime = random_choice_prob_index_sampling(self.p_sampling, idx)
+
+        for i in np.arange(batch):
+            vec[i, self.interval[idx[i], 0] + opt1prime[i]] = 1
+
         return vec
+
+    def get_fraud_type_index(self, fraud_type):
+        """
+        특정 fraud_type에 대한 인덱스를 반환하는 도우미 함수
+        """
+        # 특정 fraud_type이 모델의 특정 column에 대응된다고 가정
+        # 이 부분은 실제 데이터 구조와 요구사항에 맞게 구현해야 함
+        fraud_type_mapping = {
+            "a": 0,
+            "b": 1,
+            "c": 2,
+            "d": 3,
+            "e": 4,
+            "f": 5,
+            "g": 6,
+            "h": 7,
+            "i": 8,
+            "j": 9,
+            "k": 10,
+            "l": 11,
+            "m": 12
+        }
+        return fraud_type_mapping.get(fraud_type, 0)
 
 def cond_loss(data, output_info, c, m):
     
@@ -794,33 +822,47 @@ class CTABGANSynthesizer:
                     optimizerG.step()
                     
                             
-    def sample(self, num_samples):
-        
+    def sample(self, num_samples, fraud_types: list):
+    
         # turning the generator into inference mode to effectively use running statistics in batch norm layers
         self.generator.eval()
         # column information associated with the transformer fit to the pre-processed training data
         output_info = self.transformer.output_info
         
-        # generating synthetic data in batches accordingly to the total no. required
-        steps = num_samples // self.batch_size + 1
-        data = []
-        for _ in range(steps):
-            # generating synthetic data using sampled noise and conditional vectors
-            noisez = torch.randn(self.batch_size, self.random_dim, device=self.device)
-            condvec = self.cond_generator.sample(self.batch_size)
-            c = condvec
-            c = torch.from_numpy(c).to(self.device)
-            noisez = torch.cat([noisez, c], dim=1)
-            noisez =  noisez.view(self.batch_size,self.random_dim+self.cond_generator.n_opt,1,1)
-            fake = self.generator(noisez)
-            faket = self.Gtransformer.inverse_transform(fake)
-            fakeact = apply_activate(faket,output_info)
-            data.append(fakeact.detach().cpu().numpy())
+        # Initialize an empty list to store the results for all fraud types
+        all_data = []
 
-        data = np.concatenate(data, axis=0)
-        
-        # applying the inverse transform and returning synthetic data in a similar form as the original pre-processed training data
-        result = self.transformer.inverse_transform(data)
-        
-        return result[0:num_samples]
+        # Loop over each fraud type
+        for fraud_type in fraud_types:
+            data = []
+            # Generate synthetic data in batches accordingly to the total number required
+            steps = num_samples // self.batch_size + 1
+            for _ in range(steps):
+                # Generating synthetic data using sampled noise and conditional vectors
+                noisez = torch.randn(self.batch_size, self.random_dim, device=self.device)
+                
+                # Sample conditional vector based on the current fraud_type
+                condvec = self.cond_generator.sample(self.batch_size, fraud_type=fraud_type)
+                
+                c = condvec
+                c = torch.from_numpy(c).to(self.device)
+                noisez = torch.cat([noisez, c], dim=1)
+                noisez = noisez.view(self.batch_size, self.random_dim + self.cond_generator.n_opt, 1, 1)
+                fake = self.generator(noisez)
+                faket = self.Gtransformer.inverse_transform(fake)
+                fakeact = apply_activate(faket, output_info)
+                data.append(fakeact.detach().cpu().numpy())
+
+            data = np.concatenate(data, axis=0)
+            
+            # Applying the inverse transform and returning synthetic data in a similar form as the original pre-processed training data
+            result = self.transformer.inverse_transform(data)
+            
+            # Append the results for this fraud type to the all_data list
+            all_data.append(result[0:num_samples])
+
+        # Concatenate all generated data from different fraud types
+        final_data = np.concatenate(all_data, axis=0)
+    
+        return final_data
 

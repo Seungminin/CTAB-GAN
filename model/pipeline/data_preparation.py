@@ -81,8 +81,9 @@ class DataPrep(object):
                 else:
                     self.df[log_column] = self.df[log_column].apply(lambda x: np.log(x - lower + eps) if x != -9999999 else -9999999)
         
-        # 모든 열에 OrdinalEncoding 적용
-        self.df = pd.DataFrame(self.ordinal_encoder.fit_transform(self.df), columns=self.df.columns)
+        # Applying OrdinalEncoding to all columns except the target column
+        columns_to_encode = [col for col in self.df.columns if col != self.target_col]
+        self.df[columns_to_encode] = pd.DataFrame(self.ordinal_encoder.fit_transform(self.df[columns_to_encode]), columns=columns_to_encode)
 
         # 타겟 열에 LabelEncoding 적용
         self.df[self.target_col] = self.label_encoder.fit_transform(self.df[self.target_col])
@@ -104,7 +105,7 @@ class DataPrep(object):
             df_sample[target_col] = df_sample[target_col].map(lambda x: 0 if x < 0 else x)
             
             # Ensure that all values are within the valid range of the label encoder
-            max_label_index = len(self.label_encoder.classes_) - 2
+            max_label_index = len(self.label_encoder.classes_) - 1
             df_sample[target_col] = df_sample[target_col].map(lambda x: max_label_index if x > max_label_index else x)
             
             df_sample[target_col] = self.label_encoder.inverse_transform(df_sample[target_col])
@@ -132,8 +133,10 @@ class DataPrep(object):
         df_sample.replace(-9999999, np.nan, inplace=True)
         df_sample.replace('empty', np.nan, inplace=True)
 
-        # Reversing the ordinal encoding for categorical columns, excluding the target column
-        categorical_columns = [col for col in self.categorical_columns if col != target_col]
-        df_sample[categorical_columns] = pd.DataFrame(self.ordinal_encoder.inverse_transform(df_sample[categorical_columns]), columns=categorical_columns)
+        # Reversing the ordinal encoding for all columns except the target column
+        columns_to_decode = [col for col in self.df.columns if col != self.target_col]
+        df_sample[columns_to_decode] = pd.DataFrame(self.ordinal_encoder.inverse_transform(df_sample[columns_to_decode]), columns=columns_to_decode)
 
         return df_sample
+    
+    ##target은 label, 다른 컬럼들은 Ordinal을 사용했지만, inverse가 정상적으로 돌아가지 않는다. 아마 feature를 제대로 읽지 못하는 느낌..

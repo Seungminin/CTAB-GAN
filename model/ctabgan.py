@@ -106,7 +106,7 @@ class CTABGAN():
             subset = subset.sample(n=N_SAMPLE, random_state=42)
             
             # Synthetic data 생성
-            synthetic_subset = self.synthesizer.sample(num_samples=N_CLS_PER_GEN)
+            synthetic_subset = self.synthesizer.sample(num_samples=N_CLS_PER_GEN, fraud_types=[fraud_type])
             synthetic_subset_df = pd.DataFrame(synthetic_subset, columns=self.data_prep.df.columns)
             
             all_synthetic_data = pd.concat([all_synthetic_data, synthetic_subset_df], ignore_index=True)
