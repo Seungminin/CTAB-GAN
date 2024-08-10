@@ -57,7 +57,7 @@ class DataPrep(object):
         categorical_columns = self.categorical_columns
         irrelevant_missing_columns = set(categorical_columns)
         relevant_missing_columns = list(all_columns - irrelevant_missing_columns)
-        
+        #
         for i in relevant_missing_columns:
             if i in list(self.mixed_columns.keys()):
                 if "empty" in list(self.df[i].values):

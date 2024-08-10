@@ -32,7 +32,7 @@ class DataTransformer():
     
     """    
     
-    def __init__(self, train_data=pd.DataFrame, categorical_list=[], mixed_dict={}, n_clusters=10, eps=0.005):
+    def __init__(self, train_data=pd.DataFrame, categorical_list=[], mixed_dict={}, n_clusters=20, eps=0.005):
         
         self.meta = None
         self.train_data = train_data

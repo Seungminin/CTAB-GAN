@@ -115,4 +115,3 @@ class CTABGAN():
 
         return all_synthetic_data
 
-
