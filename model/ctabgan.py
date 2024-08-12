@@ -96,22 +96,15 @@ class CTABGAN():
         
         syn_train = self.raw_df.copy()
         print(syn_train.shape)
-        fraud_types = syn_train['Fraud_Type'].unique()
+        fraud_type = syn_train['Fraud_Type'].unique()
 
         all_synthetic_data = pd.DataFrame()
-
-        for fraud_type in fraud_types:
-            subset = syn_train[syn_train['Fraud_Type'] == fraud_type]
-            print(f"Fraud_Type: {fraud_type}, Count: {len(subset)}")
-            subset = subset.sample(n=N_SAMPLE, random_state=42)
             
-            # Synthetic data 생성
-            synthetic_subset = self.synthesizer.sample(num_samples=N_CLS_PER_GEN, fraud_types=[fraud_type])
-            synthetic_subset_df = pd.DataFrame(synthetic_subset, columns=self.data_prep.df.columns)
+        # Synthetic data 생성
+        synthetic_subset = self.synthesizer.sample(num_samples=N_CLS_PER_GEN, fraud_types=fraud_type)
+        synthetic_subset_df = pd.DataFrame(synthetic_subset, columns=self.data_prep.df.columns)
             
-            all_synthetic_data = pd.concat([all_synthetic_data, synthetic_subset_df], ignore_index=True)
-            
-        all_synthetic_data = self.data_prep.inverse_prep(all_synthetic_data)
+        all_synthetic_data = self.data_prep.inverse_prep(synthetic_subset_df)
 
         return all_synthetic_data
 
